@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Market Monitor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Stock Market Monitor</h1>
+    <input type="text" id="stockSymbol" placeholder="Enter Stock Symbol">
+    <button onclick="getStockData()">Get Data</button>
+    <div id="stockData"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    margin: 20px;
+}
+
+#stockData {
+    margin-top: 20px;
+}
+
+input, button {
+    padding: 10px;
+    margin: 5px;
+}const apiKey = 'YOUR_ALPHA_VANTAGE_API_KEY';
+
+async function getStockData() {
+    const symbol = document.getElementById('stockSymbol').value;
+    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${apiKey}`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data['Error Message']) {
+            document.getElementById('stockData').innerHTML = 'Invalid symbol or no data available.';
+            return;
+        }
+
+        const timeSeries = data['Time Series (Daily)'];
+        const stockData = Object.entries(timeSeries).map(([date, values]) => ({
+            date,
+            close: parseFloat(values['4. close']),
+        }));
+
+        calculateIndicators(stockData);
+    } catch (error) {
+        console.error('Error fetching stock data:', error);
+    }
+}
+
+function calculateIndicators(stockData) {
+    const rsiData = calculateRSI(stockData);
+    const macdData = calculateMACD(stockData);
+    const movingAverages = calculateMovingAverages(stockData);
+
+    displayData(stockData, rsiData, macdData, movingAverages);
+}
+
+function calculateRSI(stockData, period = 14) {
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+        const diff = stockData[i].close - stockData[i - 1].close;
+        if (diff >= 0) gains += diff;
+        else losses -= diff;
+    }
+    const averageGain = gains / period;
+    const averageLoss = losses / period;
+    const rs = averageGain / averageLoss;
+    const rsi = 100 - (100 / (1 + rs));
+    return rsi;
+}
+
+function calculateMACD(stockData, shortPeriod = 12, longPeriod = 26, signalPeriod = 9) {
+    const shortEMA = calculateEMA(stockData, shortPeriod);
+    const longEMA = calculateEMA(stockData, longPeriod);
+    const macdLine = shortEMA.map((val, index) => val - longEMA[index]);
+    const signalLine = calculateEMA(macdLine.slice(signalPeriod), signalPeriod);
+    return { macdLine, signalLine };
+}
+
+function calculateEMA(data, period) {
+    const multiplier = 2 / (period + 1);
+    let ema = [];
+    ema[0] = data.slice(0, period).reduce((sum, val) => sum + val.close, 0) / period;
+    for (let i = period; i < data.length; i++) {
+        ema[i] = (data[i].close - ema[i - 1]) * multiplier + ema[i - 1];
+    }
+    return ema.slice(period);
+}
+
+function calculateMovingAverages(stockData, period = 50) {
+    let movingAverages = [];
+    for (let i = period; i < stockData.length; i++) {
+        const sum = stockData.slice(i - period, i).reduce((acc, val) => acc + val.close, 0);
+        movingAverages.push(sum / period);
+    }
+    return movingAverages;
+}
+
+function displayData(stockData, rsiData, macdData, movingAverages) {
+    const stockDataDiv = document.getElementById('stockData');
+    stockDataDiv.innerHTML = `
+        <h2>RSI: ${rsiData.toFixed(2)}</h2>
+        <h2>MACD: ${macdData.macdLine[macdData.macdLine.length - 1].toFixed(2)}</h2>
+        <h2>Signal Line: ${macdData.signalLine[macdData.signalLine.length - 1].toFixed(2)}</h2>
+        <h2>50-day Moving Average: ${movingAverages[movingAverages.length - 1].toFixed(2)}</h2>
+    `;
+}
